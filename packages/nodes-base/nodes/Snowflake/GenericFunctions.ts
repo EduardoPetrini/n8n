@@ -25,3 +25,18 @@ export async function execute(
 		});
 	});
 }
+
+export async function getStream(
+	conn: snowflake.Connection,
+	sqlText: string,
+	binds: snowflake.InsertBinds,
+) {
+	return await new Promise<snowflake.Statement>((resolve, reject) => {
+		conn.execute({
+			sqlText,
+			binds,
+			streamResult: true,
+			complete: (error, stmt) => (error ? reject(error) : resolve(stmt)),
+		});
+	});
+}
