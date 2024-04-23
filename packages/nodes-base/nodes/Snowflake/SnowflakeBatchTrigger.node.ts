@@ -8,7 +8,7 @@ import type {
 	IRun,
 } from 'n8n-workflow';
 
-import { createDeferredPromise, NodeOperationError } from 'n8n-workflow';
+import { createDeferredPromise } from 'n8n-workflow';
 
 import snowflake from 'snowflake-sdk';
 import { connect, destroy, execute } from './GenericFunctions';
@@ -61,11 +61,6 @@ export class SnowflakeBatchTrigger implements INodeType {
 				typeOptions: {
 					editor: 'sqlEditor',
 				},
-				displayOptions: {
-					show: {
-						operation: ['executeQuery'],
-					},
-				},
 				default: '',
 				placeholder: 'SELECT id, name FROM product WHERE id < 40',
 				required: true,
@@ -75,13 +70,7 @@ export class SnowflakeBatchTrigger implements INodeType {
 				displayName: 'Main Table',
 				name: 'table',
 				type: 'string',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						operation: ['executeQuery'],
-					},
-				},
-				default: 'table_1',
+				default: 'schema.table_1',
 				placeholder: 'The main table name',
 				required: true,
 				description: 'The SQL query main to count',
@@ -90,16 +79,25 @@ export class SnowflakeBatchTrigger implements INodeType {
 				displayName: 'Limit',
 				name: 'limit',
 				type: 'number',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						operation: ['executeQuery'],
-					},
+				typeOptions: {
+					minValue: 1,
 				},
 				default: 1000,
 				placeholder: '1000',
 				required: true,
-				description: 'The SQL query limit to execute',
+				description: 'Max number of results to return',
+			},
+			{
+				displayName: 'Execution Interval in Minutes',
+				name: 'minutes',
+				type: 'number',
+				default: 60,
+				typeOptions: {
+					minValue: 1,
+				},
+				placeholder: '60',
+				required: true,
+				description: 'The SQL query interval to execute',
 			},
 		],
 	};
@@ -112,13 +110,21 @@ export class SnowflakeBatchTrigger implements INodeType {
 		const query = this.getNodeParameter('query') as string;
 		const limit = this.getNodeParameter('limit') as number;
 		const table = this.getNodeParameter('table') as number;
+		const minutes = this.getNodeParameter('minutes') as number;
 
 		const connection = snowflake.createConnection(credentials);
 		await connect(connection);
 		const event = new EventEmitter();
-		const startTrigger = async () => {
-			const offset = 0;
+		let isRunning = false;
 
+		const startTrigger = async () => {
+			console.log('Starting trigger', new Date().toLocaleString());
+			if (isRunning) {
+				console.log('It is already running, what should I do?', isRunning);
+			}
+
+			const offset = 0;
+			isRunning = true;
 			const countQuery = `SELECT COUNT(*) as count FROM ${table};`;
 
 			const result = await execute(connection, countQuery, []);
@@ -127,7 +133,7 @@ export class SnowflakeBatchTrigger implements INodeType {
 
 			event.on('queryAndPush', async (newOffset) => {
 				const limitQuery = `${query} LIMIT ${limit} OFFSET ${newOffset}`;
-				console.log(limitQuery);
+				console.log(limitQuery, ' | is running', isRunning);
 
 				const rows = await execute(connection, limitQuery, []);
 				console.log('result', rows?.length);
@@ -152,6 +158,7 @@ export class SnowflakeBatchTrigger implements INodeType {
 			});
 
 			event.on('done', (msg) => {
+				isRunning = false;
 				console.log('Events loop completed', msg);
 			});
 
@@ -160,8 +167,13 @@ export class SnowflakeBatchTrigger implements INodeType {
 
 		await startTrigger();
 
+		const interval = 60 * 1000 * minutes;
+		setInterval(async () => {
+			await startTrigger();
+		}, interval);
+
 		const closeFunction = async () => {
-      event.emit('done', 'killed')
+			event.emit('done', 'killed');
 			event.removeAllListeners();
 			await destroy(connection);
 		};
