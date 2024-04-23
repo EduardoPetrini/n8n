@@ -37,6 +37,11 @@ RUN \
 	mkdir .n8n && \
 	chown node:node .n8n
 
+# PUPPERTEER
+RUN apk update && apk add --no-cache chromium nss freetype harfbuzz ttf-freefont
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD 1
+ENV PUPPETEER_EXECUTABLE_PATH /usr/bin/chromium-browser 
+
 ENV SHELL /bin/sh
 USER node
 ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
