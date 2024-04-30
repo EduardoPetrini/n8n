@@ -1,3 +1,4 @@
+import { INodeExecutionData } from 'n8n-workflow';
 import type snowflake from 'snowflake-sdk';
 
 export async function connect(conn: snowflake.Connection) {
@@ -39,4 +40,66 @@ export async function getStream(
 			complete: (error, stmt) => (error ? reject(error) : resolve(stmt)),
 		});
 	});
+}
+
+export async function getNextItem(): Promise<INodeExecutionData> {
+	await new Promise((resolve) => setTimeout(resolve, 200));
+
+	const num = Math.round(Math.random() * 1000);
+
+	const row = {
+		json: { id: num, name: `My name is ${num}`, date: new Date() },
+		pairedItem: {
+			item: 0,
+			sourceOverwrite: undefined,
+		},
+	} as unknown as INodeExecutionData;
+
+	return row;
+}
+
+export async function* getGenerator(connection: snowflake.Connection, query: string): AsyncGenerator<INodeExecutionData, any, unknown> {
+	const statement: snowflake.Statement = await new Promise((resolve, reject) => {
+		connection.execute({
+			sqlText: query,
+			streamResult: true,
+			complete: (err, stmt) => (err ? reject(err) : resolve(stmt)),
+		});
+	});
+
+	const dataStream = statement.streamRows();
+
+	let done = false;
+	const finish = new Promise((resolve) =>
+		dataStream.once('finish', () => {
+      const returnData = {
+        json: null,
+        pairedItem: {
+          item: 0,
+          sourceOverwrite: undefined,
+        },
+      } as unknown as INodeExecutionData;
+			resolve(returnData);
+			done = true;
+		}),
+	);
+
+	while (!done) {
+		const promise = new Promise((resolve) => {
+			dataStream.once('data', (row) => {
+				const returnData = {
+					json: row,
+					pairedItem: {
+						item: 0,
+						sourceOverwrite: undefined,
+					},
+				} as unknown as INodeExecutionData;
+				resolve(returnData);
+				dataStream.pause();
+			});
+			dataStream.resume();
+		});
+
+		yield await Promise.race([promise, finish]) as unknown as INodeExecutionData;
+	}
 }

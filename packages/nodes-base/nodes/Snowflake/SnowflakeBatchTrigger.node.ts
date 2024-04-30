@@ -99,6 +99,19 @@ export class SnowflakeBatchTrigger implements INodeType {
 				required: true,
 				description: 'The SQL query interval to execute',
 			},
+			{
+				displayName: 'Interval between batches in seconds',
+				name: 'batchInterval',
+				type: 'number',
+				default: 60,
+				typeOptions: {
+					minValue: 1,
+				},
+				placeholder: '60',
+				required: true,
+				description:
+					'The SQL query interval to execute between batches to work around the backpressure',
+			},
 		],
 	};
 
@@ -111,6 +124,7 @@ export class SnowflakeBatchTrigger implements INodeType {
 		const limit = this.getNodeParameter('limit') as number;
 		const table = this.getNodeParameter('table') as number;
 		const minutes = this.getNodeParameter('minutes') as number;
+		const batchInterval = this.getNodeParameter('batchInterval') as number;
 
 		const connection = snowflake.createConnection(credentials);
 		await connect(connection);
@@ -130,10 +144,16 @@ export class SnowflakeBatchTrigger implements INodeType {
 			const result = await execute(connection, countQuery, []);
 			const count = result?.[0].COUNT;
 			console.log('rows count', count);
+			this.logger.info(`rows count: ${count}`);
+			if (!count) {
+				this.logger.warn(`No data found in the source table: ${table}, count: ${count}`);
+				return;
+			}
 
 			event.on('queryAndPush', async (newOffset) => {
 				const limitQuery = `${query} LIMIT ${limit} OFFSET ${newOffset}`;
 				console.log(limitQuery, ' | is running', isRunning);
+        this.logger.info(`${limitQuery}`);
 
 				const rows = await execute(connection, limitQuery, []);
 				console.log('result', rows?.length);
@@ -154,7 +174,8 @@ export class SnowflakeBatchTrigger implements INodeType {
 					return event.emit('done', 'done');
 				}
 
-				event.emit('queryAndPush', newOffset);
+				const interval = 1000 * batchInterval;
+				setTimeout(() => event.emit('queryAndPush', newOffset), interval);
 			});
 
 			event.on('done', (msg) => {
