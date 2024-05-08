@@ -724,6 +724,7 @@
       "dist/nodes/Snowflake/SnowflakeTrigger.node.js",
       "dist/nodes/Snowflake/SnowflakeBatchTrigger.node.js",
       "dist/nodes/Snowflake/SnowflakeLoop.node.js",
+      "dist/nodes/Snowflake/SnowflakeLoopBatch.node.js",
       "dist/nodes/SplitInBatches/SplitInBatches.node.js",
       "dist/nodes/Splunk/Splunk.node.js",
       "dist/nodes/Spontit/Spontit.node.js",

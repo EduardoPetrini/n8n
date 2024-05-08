@@ -58,7 +58,10 @@ export async function getNextItem(): Promise<INodeExecutionData> {
 	return row;
 }
 
-export async function* getGenerator(connection: snowflake.Connection, query: string): AsyncGenerator<INodeExecutionData, any, unknown> {
+export async function* getGenerator(
+	connection: snowflake.Connection,
+	query: string,
+): AsyncGenerator<INodeExecutionData, any, unknown> {
 	const statement: snowflake.Statement = await new Promise((resolve, reject) => {
 		connection.execute({
 			sqlText: query,
@@ -71,14 +74,14 @@ export async function* getGenerator(connection: snowflake.Connection, query: str
 
 	let done = false;
 	const finish = new Promise((resolve) =>
-		dataStream.once('finish', () => {
-      const returnData = {
-        json: null,
-        pairedItem: {
-          item: 0,
-          sourceOverwrite: undefined,
-        },
-      } as unknown as INodeExecutionData;
+		dataStream.once('end', () => {
+			const returnData = {
+				json: null,
+				pairedItem: {
+					item: 0,
+					sourceOverwrite: undefined,
+				},
+			} as unknown as INodeExecutionData;
 			resolve(returnData);
 			done = true;
 		}),
@@ -100,6 +103,61 @@ export async function* getGenerator(connection: snowflake.Connection, query: str
 			dataStream.resume();
 		});
 
-		yield await Promise.race([promise, finish]) as unknown as INodeExecutionData;
+		yield (await Promise.race([promise, finish])) as unknown as INodeExecutionData;
+	}
+}
+
+export async function* getGeneratorBatch(
+	connection: snowflake.Connection,
+	query: string,
+): AsyncGenerator<INodeExecutionData, any, unknown> {
+	const statement: snowflake.Statement = await new Promise((resolve, reject) => {
+		connection.execute({
+			sqlText: query,
+			streamResult: true,
+			complete: (err, stmt) => (err ? reject(err) : resolve(stmt)),
+		});
+	});
+
+	const totalRows = statement.getNumRows();
+
+	let start = 0;
+	let end = start + 1;
+	while (end < totalRows) {
+		const dataStream = statement.streamRows({
+			start,
+			end,
+		});
+
+		const promise = new Promise((resolve) => {
+			dataStream.once('data', (row) => {
+				const returnData = {
+					json: row,
+					pairedItem: {
+						item: 0,
+						sourceOverwrite: undefined,
+					},
+				} as unknown as INodeExecutionData;
+				resolve(returnData);
+				dataStream.pause();
+			});
+			dataStream.resume();
+		});
+
+		start = end;
+		end = end + 1;
+		yield (await Promise.resolve(promise)) as INodeExecutionData;
+
+    // if (end >= totalRows) {
+    //   const returnData = {
+    //     json: null,
+    //     pairedItem: {
+    //       item: 0,
+    //       sourceOverwrite: undefined,
+    //     },
+    //   } as unknown as INodeExecutionData;
+
+    //   yield returnData
+    // }
 	}
 }
