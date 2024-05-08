@@ -24,8 +24,9 @@ export class SnowflakeLoopBatch implements INodeType {
 			name: 'Snowflake LoopBatch',
 		},
 		inputs: ['main'],
-		outputs: ['main'],
-		outputNames: ['row'],
+    // eslint-disable-next-line n8n-nodes-base/node-class-description-outputs-wrong
+		outputs: ['main', 'main'],
+		outputNames: ['row', 'done'],
 		credentials: [
 			{
 				name: 'snowflake',
@@ -79,6 +80,7 @@ export class SnowflakeLoopBatch implements INodeType {
 		const nodeContext = this.getContext('node');
 
 		const returnItems: INodeExecutionData[] = [];
+		let completed = false;
 
 		if (nodeContext.items === undefined) {
 			// Is the first time the node runs
@@ -91,11 +93,11 @@ export class SnowflakeLoopBatch implements INodeType {
 			const connection = snowflake.createConnection(credentials);
 			await connect(connection);
 
-      const generator = getGeneratorBatch(connection, query);
+			const generator = getGeneratorBatch(connection, query);
 
 			// Get the items which should be returned
 			const newItem = await generator.next();
-      const value = newItem.value || {};
+			const value = newItem.value || {};
 
 			returnItems.push.apply(returnItems, [value]);
 
@@ -104,13 +106,17 @@ export class SnowflakeLoopBatch implements INodeType {
 
 			// Reset processedItems as they get only added starting from the first iteration
 			nodeContext.processedItems = [value];
-      nodeContext.generator = generator;
+			nodeContext.generator = generator;
 		} else {
 			// The node has been called before. So return the next batch of items.
 			nodeContext.currentRunIndex += 1;
 
 			const newItem = await nodeContext.generator.next();
-      const value = newItem.value || {};
+			if (!newItem.value) {
+				completed = true;
+			}
+
+			const value = newItem.value || {};
 
 			returnItems.push.apply(returnItems, [value]);
 
@@ -168,11 +174,16 @@ export class SnowflakeLoopBatch implements INodeType {
 
 		if (returnItems.length === 0) {
 			nodeContext.done = true;
-			return [nodeContext.processedItems];
+			return [[], nodeContext.processedItems];
+		}
+
+		if (completed) {
+			this.logger.info(`Snowflake loop batch completed!`);
+			return [[], []];
 		}
 
 		nodeContext.done = false;
 
-		return [returnItems];
+		return [returnItems, []];
 	}
 }
