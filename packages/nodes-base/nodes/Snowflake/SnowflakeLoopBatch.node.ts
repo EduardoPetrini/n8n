@@ -95,7 +95,7 @@ export class SnowflakeLoopBatch implements INodeType {
 
 			// Get the items which should be returned
 			const newItem = await generator.next();
-      const value = newItem.value;
+      const value = newItem.value || {};
 
 			returnItems.push.apply(returnItems, [value]);
 
@@ -110,7 +110,7 @@ export class SnowflakeLoopBatch implements INodeType {
 			nodeContext.currentRunIndex += 1;
 
 			const newItem = await nodeContext.generator.next();
-      const value = newItem.value;
+      const value = newItem.value || {};
 
 			returnItems.push.apply(returnItems, [value]);
 
