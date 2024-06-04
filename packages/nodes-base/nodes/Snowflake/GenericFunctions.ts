@@ -1,4 +1,4 @@
-import { INodeExecutionData } from 'n8n-workflow';
+import type { INodeExecutionData } from 'n8n-workflow';
 import type snowflake from 'snowflake-sdk';
 
 export async function connect(conn: snowflake.Connection) {
@@ -22,7 +22,7 @@ export async function execute(
 		conn.execute({
 			sqlText,
 			binds,
-			complete: (error, _, rows) => (error ? reject(error) : resolve(rows)),
+			complete: (error, stmt, rows) => (error ? reject(error) : resolve(rows)),
 		});
 	});
 }
@@ -103,14 +103,15 @@ export async function* getGenerator(
 			dataStream.resume();
 		});
 
-		yield (await Promise.race([promise, finish])) as unknown as INodeExecutionData;
+		yield (await Promise.race([promise, finish])) as INodeExecutionData;
 	}
 }
 
 export async function* getGeneratorBatch(
 	connection: snowflake.Connection,
 	query: string,
-): AsyncGenerator<INodeExecutionData, any, unknown> {
+	batchSize: number,
+): AsyncGenerator<INodeExecutionData[]> {
 	const statement: snowflake.Statement = await new Promise((resolve, reject) => {
 		connection.execute({
 			sqlText: query,
@@ -122,15 +123,16 @@ export async function* getGeneratorBatch(
 	const totalRows = statement.getNumRows();
 
 	let start = 0;
-	let end = start + 1;
+	let end = start + batchSize;
 	while (end < totalRows) {
 		const dataStream = statement.streamRows({
 			start,
 			end,
 		});
 
+		const returnDataBatch: INodeExecutionData[] = [];
 		const promise = new Promise((resolve) => {
-			dataStream.once('data', (row) => {
+			dataStream.on('data', (row) => {
 				const returnData = {
 					json: row,
 					pairedItem: {
@@ -138,26 +140,17 @@ export async function* getGeneratorBatch(
 						sourceOverwrite: undefined,
 					},
 				} as unknown as INodeExecutionData;
-				resolve(returnData);
-				dataStream.pause();
+
+				returnDataBatch.push(returnData);
 			});
-			dataStream.resume();
+
+			dataStream.once('end', () => {
+				resolve(returnDataBatch);
+			});
 		});
 
 		start = end;
-		end = end + 1;
-		yield (await Promise.resolve(promise)) as INodeExecutionData;
-
-    // if (end >= totalRows) {
-    //   const returnData = {
-    //     json: null,
-    //     pairedItem: {
-    //       item: 0,
-    //       sourceOverwrite: undefined,
-    //     },
-    //   } as unknown as INodeExecutionData;
-
-    //   yield returnData
-    // }
+		end = end + batchSize;
+		yield (await Promise.resolve(promise)) as INodeExecutionData[];
 	}
 }

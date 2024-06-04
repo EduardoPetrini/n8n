@@ -24,7 +24,7 @@ export class SnowflakeLoopBatch implements INodeType {
 			name: 'Snowflake LoopBatch',
 		},
 		inputs: ['main'],
-    // eslint-disable-next-line n8n-nodes-base/node-class-description-outputs-wrong
+		// eslint-disable-next-line n8n-nodes-base/node-class-description-outputs-wrong
 		outputs: ['main', 'main'],
 		outputNames: ['row', 'done'],
 		credentials: [
@@ -49,10 +49,15 @@ export class SnowflakeLoopBatch implements INodeType {
 				],
 				default: 'executeQuery',
 			},
-
-			// ----------------------------------
-			//         executeQuery
-			// ----------------------------------
+			{
+				displayName: 'Batch Size',
+				name: 'batchSize',
+				type: 'number',
+				noDataExpression: true,
+				default: 1000,
+				required: true,
+				description: 'The number of rows to read and keep cached',
+			},
 			{
 				displayName: 'Query',
 				name: 'query',
@@ -75,14 +80,14 @@ export class SnowflakeLoopBatch implements INodeType {
 		)) as unknown as snowflake.ConnectionOptions;
 
 		const query = this.getNodeParameter('query', 0) as string;
-		const items = [{}] as unknown as INodeExecutionData[];
+		const batchSize = this.getNodeParameter('batchSize', 0) as number;
 
 		const nodeContext = this.getContext('node');
 
 		const returnItems: INodeExecutionData[] = [];
 		let completed = false;
 
-		if (nodeContext.items === undefined) {
+		if (nodeContext.isNotFirst === undefined) {
 			// Is the first time the node runs
 			const sourceData = this.getInputSourceData();
 
@@ -93,92 +98,74 @@ export class SnowflakeLoopBatch implements INodeType {
 			const connection = snowflake.createConnection(credentials);
 			await connect(connection);
 
-			const generator = getGeneratorBatch(connection, query);
+			const generator = getGeneratorBatch(connection, query, batchSize);
 
 			// Get the items which should be returned
-			const newItem = await generator.next();
-			const value = newItem.value || {};
-
-			returnItems.push.apply(returnItems, [value]);
+			const itemNext = await generator.next();
+			nodeContext.batchItems = itemNext.value.reverse();
+			// returnItems.push.apply(returnItems, [value]);
 
 			// Save the incoming items to be able to return them for later runs
-			nodeContext.items = [value];
+			nodeContext.isNotFirst = true;
 
 			// Reset processedItems as they get only added starting from the first iteration
-			nodeContext.processedItems = [value];
 			nodeContext.generator = generator;
-		} else {
+		}
+
+		if (nodeContext.batchItems.length === 0) {
 			// The node has been called before. So return the next batch of items.
 			nodeContext.currentRunIndex += 1;
 
-			const newItem = await nodeContext.generator.next();
-			if (!newItem.value) {
-				completed = true;
+			const itemNext = await nodeContext.generator.next();
+			completed = true;
+			if (!itemNext.done && itemNext.value) {
+				completed = false;
+				nodeContext.batchItems = itemNext.value.reverse();
 			}
+		}
 
-			const value = newItem.value || {};
-
-			returnItems.push.apply(returnItems, [value]);
-
-			const addSourceOverwrite = (pairedItem: IPairedItemData | number): IPairedItemData => {
-				if (typeof pairedItem === 'number') {
-					return {
-						item: pairedItem,
-						sourceOverwrite: nodeContext.sourceData,
-					};
-				}
-
+		const addSourceOverwrite = (pairedItem: IPairedItemData | number): IPairedItemData => {
+			if (typeof pairedItem === 'number') {
 				return {
-					...pairedItem,
+					item: pairedItem,
 					sourceOverwrite: nodeContext.sourceData,
 				};
-			};
-
-			function getPairedItemInformation(
-				item: INodeExecutionData,
-			): IPairedItemData | IPairedItemData[] {
-				if (item.pairedItem === undefined) {
-					return {
-						item: 0,
-						sourceOverwrite: nodeContext.sourceData,
-					};
-				}
-
-				if (Array.isArray(item.pairedItem)) {
-					return item.pairedItem.map(addSourceOverwrite);
-				}
-
-				return addSourceOverwrite(item.pairedItem);
 			}
 
-			const sourceOverwrite = this.getInputSourceData();
+			return {
+				...pairedItem,
+				sourceOverwrite: nodeContext.sourceData,
+			};
+		};
 
-			const newItems = items.map((item, index) => {
+		function getPairedItemInformation(
+			item: INodeExecutionData,
+		): IPairedItemData | IPairedItemData[] {
+			if (item.pairedItem === undefined) {
 				return {
-					...item,
-					pairedItem: {
-						sourceOverwrite,
-						item: index,
-					},
+					item: 0,
+					sourceOverwrite: nodeContext.sourceData,
 				};
-			});
+			}
 
-			nodeContext.processedItems = [...nodeContext.processedItems, ...newItems];
+			if (Array.isArray(item.pairedItem)) {
+				return item.pairedItem.map(addSourceOverwrite);
+			}
 
-			returnItems.map((item) => {
-				item.pairedItem = getPairedItemInformation(item);
-			});
+			return addSourceOverwrite(item.pairedItem);
 		}
 
-		nodeContext.noItemsLeft = nodeContext.items.length === 0;
+		returnItems.map((item) => {
+			item.pairedItem = getPairedItemInformation(item);
+		});
+		// }
 
-		if (returnItems.length === 0) {
+		const value = nodeContext.batchItems.pop();
+		returnItems.push.apply(returnItems, [value]);
+
+		if (returnItems.length === 0 || completed) {
+			this.logger.info('Snowflake loop batch completed!');
 			nodeContext.done = true;
-			return [[], nodeContext.processedItems];
-		}
-
-		if (completed) {
-			this.logger.info(`Snowflake loop batch completed!`);
 			return [[], []];
 		}
 

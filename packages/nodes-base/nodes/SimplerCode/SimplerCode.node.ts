@@ -1,10 +1,12 @@
 /* eslint-disable n8n-nodes-base/node-filename-against-convention */
+
+import vm from 'node:vm';
+
 import type {
 	IExecuteFunctions,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	IPairedItemData,
 } from 'n8n-workflow';
 
 export class SimplerCode implements INodeType {
@@ -31,14 +33,11 @@ export class SimplerCode implements INodeType {
 					editorLanguage: 'javaScript',
 				},
 				default: `
-(dataList) => {
-\s\sfor(let index = 0; index < dataList.length; index++) {
- \s\s\s\sdataList[index].codeModified = new Date();
-\s\s}
-\s\s
-\s\s// expect an array as output
-\s\sreturn dataList;
-}`.trim(),
+        for (let item of $input) {
+          item.myNewField = 1;
+        }
+      
+        return $input;`.trim(),
 				description:
 					'JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href="https://docs.n8n.io/nodes/n8n-nodes-base.function">Learn more</a>.',
 				noDataExpression: true,
@@ -53,55 +52,44 @@ export class SimplerCode implements INodeType {
 		const returnItems: INodeExecutionData[] = [];
 		const previousNode = this.getInputSourceData();
 		nodeContext.previousNode = previousNode;
+
 		const items = this.getInputData();
+
 		if (nodeContext.isNotFirst === undefined) {
 			// Is the first time the node runs
+			const functionWrapper = `
+        async function n8nOutsiderFunction() {
+          ${code}
+        }
 
-			nodeContext.userFunction = eval(code);
+        n8nOutsiderFunction().then(functionOutput => {
+          output.response = functionOutput;
+        });
+
+      `;
+
+			const scriptContext: vm.Context = {
+				$input: items,
+				output: {},
+			};
+			vm.createContext(scriptContext);
+
+			nodeContext.userFunction = new vm.Script(functionWrapper);
+			nodeContext.userContext = scriptContext;
+			// vm.measureMemory
 		}
 		// The node has been called before. So return the next batch of items.
 		nodeContext.isNotFirst = true;
+		nodeContext.userContext.$input = items;
 
-		const result = await nodeContext.userFunction(items.map((item) => item.json));
-		const dataResponse = result.map((item: any) => ({ json: item }));
+		// await nodeContext.userFunction.runInNewContext(scriptContext);
+		// await nodeContext.userFunction.runInThisContext();
+		await nodeContext.userFunction.runInContext(nodeContext.userContext);
+		const dataResponse = nodeContext.userContext.output.response;
 
 		returnItems.push.apply(returnItems, dataResponse);
 
-		const addSourceOverwrite = (pairedItem: IPairedItemData | number): IPairedItemData => {
-			if (typeof pairedItem === 'number') {
-				return {
-					item: pairedItem,
-					sourceOverwrite: nodeContext.previousNode,
-				};
-			}
-
-			return {
-				...pairedItem,
-				sourceOverwrite: nodeContext.previousNode,
-			};
-		};
-
-		function getPairedItemInformation(
-			item: INodeExecutionData,
-		): IPairedItemData | IPairedItemData[] {
-			if (item.pairedItem === undefined) {
-				return {
-					item: 0,
-					sourceOverwrite: nodeContext.previousNode,
-				};
-			}
-
-			if (Array.isArray(item.pairedItem)) {
-				return item.pairedItem.map(addSourceOverwrite);
-			}
-
-			return addSourceOverwrite(item.pairedItem);
-		}
-
-		returnItems.map((item) => {
-			item.pairedItem = getPairedItemInformation(item);
-		});
-
+		// global.gc();
 		return [returnItems];
 	}
 }
