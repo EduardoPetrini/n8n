@@ -63,7 +63,9 @@ export class NDV extends BasePage {
 		httpRequestNotice: () => cy.getByTestId('node-parameters-http-notice'),
 		nthParam: (n: number) => cy.getByTestId('node-parameters').find('.parameter-item').eq(n),
 		inputRunSelector: () => this.getters.inputPanel().findChildByTestId('run-selector'),
+		inputLinkRun: () => this.getters.inputPanel().findChildByTestId('link-run'),
 		outputRunSelector: () => this.getters.outputPanel().findChildByTestId('run-selector'),
+		outputLinkRun: () => this.getters.outputPanel().findChildByTestId('link-run'),
 		outputHoveringItem: () => this.getters.outputPanel().findChildByTestId('hovering-item'),
 		inputHoveringItem: () => this.getters.inputPanel().findChildByTestId('hovering-item'),
 		outputBranches: () => this.getters.outputPanel().findChildByTestId('branches'),
@@ -84,6 +86,7 @@ export class NDV extends BasePage {
 			cy.getByTestId('columns-parameter-input-options-container'),
 		resourceMapperRemoveAllFieldsOption: () => cy.getByTestId('action-removeAllFields'),
 		sqlEditorContainer: () => cy.getByTestId('sql-editor-container'),
+		htmlEditorContainer: () => cy.getByTestId('html-editor-container'),
 		filterComponent: (paramName: string) => cy.getByTestId(`filter-${paramName}`),
 		filterCombinator: (paramName: string, index = 0) =>
 			this.getters.filterComponent(paramName).getByTestId('filter-combinator-select').eq(index),
@@ -124,6 +127,8 @@ export class NDV extends BasePage {
 		codeEditorFullscreen: () => this.getters.codeEditorDialog().find('.cm-content'),
 		nodeRunSuccessIndicator: () => cy.getByTestId('node-run-info-success'),
 		nodeRunErrorIndicator: () => cy.getByTestId('node-run-info-danger'),
+		nodeRunErrorMessage: () => cy.getByTestId('node-error-message'),
+		nodeRunErrorDescription: () => cy.getByTestId('node-error-description'),
 	};
 
 	actions = {
@@ -225,10 +230,10 @@ export class NDV extends BasePage {
 			getVisibleSelect().find('.el-select-dropdown__item').contains(runName).click();
 		},
 		toggleOutputRunLinking: () => {
-			this.getters.outputRunSelector().find('button').click();
+			this.getters.outputLinkRun().click();
 		},
 		toggleInputRunLinking: () => {
-			this.getters.inputRunSelector().find('button').click();
+			this.getters.inputLinkRun().click();
 		},
 		switchOutputBranch: (name: string) => {
 			this.getters.outputBranches().get('span').contains(name).click();

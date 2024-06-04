@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed } from 'vue';
 import { useI18n } from '@/composables/useI18n';
-import { splitName } from '@/features/projects/projects.utils';
+import { ProjectTypes, splitName } from '@/features/projects/projects.utils';
 import type { ICredentialsResponse, IWorkflowDb } from '@/Interface';
 import type { Project } from '@/features/projects/projects.types';
 
@@ -23,15 +23,18 @@ const badgeText = computed(() => {
 	) {
 		return locale.baseText('generic.ownedByMe');
 	} else {
-		const { firstName, lastName } = splitName(props.resource.homeProject?.name ?? '');
-		return `${firstName}${lastName ? ' ' + lastName : ''}`;
+		const { firstName, lastName, email } = splitName(props.resource.homeProject?.name ?? '');
+		return !firstName ? email : `${firstName}${lastName ? ' ' + lastName : ''}`;
 	}
 });
 
 const badgeIcon = computed(() => {
-	if (props.resource.sharedWithProjects?.length && props.resource.homeProject?.type !== 'team') {
+	if (
+		props.resource.sharedWithProjects?.length &&
+		props.resource.homeProject?.type !== ProjectTypes.Team
+	) {
 		return 'user-friends';
-	} else if (props.resource.homeProject?.type === 'team') {
+	} else if (props.resource.homeProject?.type === ProjectTypes.Team) {
 		return 'archive';
 	} else {
 		return '';

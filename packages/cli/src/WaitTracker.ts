@@ -3,7 +3,7 @@ import {
 	ErrorReporterProxy as ErrorReporter,
 	WorkflowOperationError,
 } from 'n8n-workflow';
-import { Container, Service } from 'typedi';
+import { Service } from 'typedi';
 import type { ExecutionStopResult, IWorkflowExecutionDataProcess } from '@/Interfaces';
 import { WorkflowRunner } from '@/WorkflowRunner';
 import { ExecutionRepository } from '@db/repositories/execution.repository';
@@ -27,9 +27,11 @@ export class WaitTracker {
 		private readonly executionRepository: ExecutionRepository,
 		private readonly ownershipService: OwnershipService,
 		private readonly workflowRunner: WorkflowRunner,
-		readonly orchestrationService: OrchestrationService,
-	) {
-		const { isSingleMainSetup, isLeader, multiMainSetup } = orchestrationService;
+		private readonly orchestrationService: OrchestrationService,
+	) {}
+
+	init() {
+		const { isSingleMainSetup, isLeader, multiMainSetup } = this.orchestrationService;
 
 		if (isSingleMainSetup) {
 			this.startTracking();
@@ -43,7 +45,7 @@ export class WaitTracker {
 			.on('leader-stepdown', () => this.stopTracking());
 	}
 
-	startTracking() {
+	private startTracking() {
 		this.logger.debug('Wait tracker started tracking waiting executions');
 
 		// Poll every 60 seconds a list of upcoming executions
@@ -137,10 +139,7 @@ export class WaitTracker {
 		fullExecutionData.waitTill = null;
 		fullExecutionData.status = 'canceled';
 
-		await Container.get(ExecutionRepository).updateExistingExecution(
-			executionId,
-			fullExecutionData,
-		);
+		await this.executionRepository.updateExistingExecution(executionId, fullExecutionData);
 
 		return {
 			mode: fullExecutionData.mode,

@@ -68,7 +68,7 @@ export interface IConnection {
 	node: string;
 
 	// The type of the input on destination node (for example "main")
-	type: string;
+	type: NodeConnectionType;
 
 	// The output/input-index of destination node (if node has multiple inputs/outputs of the same type)
 	index: number;
@@ -1704,6 +1704,21 @@ export const enum NodeConnectionType {
 	Main = 'main',
 }
 
+export const nodeConnectionTypes: NodeConnectionType[] = [
+	NodeConnectionType.AiAgent,
+	NodeConnectionType.AiChain,
+	NodeConnectionType.AiDocument,
+	NodeConnectionType.AiEmbedding,
+	NodeConnectionType.AiLanguageModel,
+	NodeConnectionType.AiMemory,
+	NodeConnectionType.AiOutputParser,
+	NodeConnectionType.AiRetriever,
+	NodeConnectionType.AiTextSplitter,
+	NodeConnectionType.AiTool,
+	NodeConnectionType.AiVectorStore,
+	NodeConnectionType.Main,
+];
+
 export interface INodeInputFilter {
 	// TODO: Later add more filter options like categories, subcatogries,
 	//       regex, allow to exclude certain nodes, ... ?
@@ -1751,28 +1766,18 @@ export interface INodeTypeDescription extends INodeTypeBaseDescription {
 	webhooks?: IWebhookDescription[];
 	translation?: { [key: string]: object };
 	mockManualExecution?: true;
-	triggerPanel?:
-		| {
-				hideContent?: boolean | string;
-				header?: string;
-				executionsHelp?:
-					| string
-					| {
-							active: string;
-							inactive: string;
-					  };
-				activationHint?:
-					| string
-					| {
-							active: string;
-							inactive: string;
-					  };
-		  }
-		| boolean;
+	triggerPanel?: TriggerPanelDefinition | boolean;
 	extendsCredential?: string;
 	hints?: NodeHint[];
 	__loadOptionsMethods?: string[]; // only for validation during build
 }
+
+export type TriggerPanelDefinition = {
+	hideContent?: boolean | string;
+	header?: string;
+	executionsHelp?: string | { active: string; inactive: string };
+	activationHint?: string | { active: string; inactive: string };
+};
 
 export type NodeHint = {
 	message: string;
