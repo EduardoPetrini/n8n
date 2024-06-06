@@ -33,11 +33,11 @@ export class SimplerCode implements INodeType {
 					editorLanguage: 'javaScript',
 				},
 				default: `
-        for (let item of $input) {
-          item.myNewField = 1;
-        }
-      
-        return $input;`.trim(),
+for (let item of $input) {
+  item.json.myNewField = 1;
+}
+
+return $input;`.trim(),
 				description:
 					'JavaScript code to execute.<br><br>Tip: You can use luxon vars like <code>$today</code> for dates and <code>$jmespath</code> for querying JSON structures. <a href="https://docs.n8n.io/nodes/n8n-nodes-base.function">Learn more</a>.',
 				noDataExpression: true,
